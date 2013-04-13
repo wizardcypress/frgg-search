@@ -15,7 +15,7 @@ struct postinglist
 {
 	unsigned int freq;	/* doc freq */
 	unsigned int *docs;	/* DocIDs list */
-	unsigned short *tf;	/* term freq list */
+	unsigned int *tf;	/* term freq list */
 	size_t  size;		/* list capacity */
 };
 
@@ -23,6 +23,7 @@ struct postinglist
 struct dict_t
 {
 	char *term;
+    size_t term_size;
 	struct postinglist *p;
 	struct dict_t *next;
 };

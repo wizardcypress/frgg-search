@@ -55,7 +55,9 @@ void addto_postinglist(struct postinglist *p, unsigned int id);
 int vb_encode(unsigned int n, unsigned char *bytes);
 size_t pack_index_data(struct postinglist *p, char *buf);
 int write_index_file(struct dict_t **dict, size_t size, const char *indexfile);
-int calc_doc_weight(const char *bname, int type, unsigned int ndocs);
+int calc_doc_weight(int type);
+int merge_index(int type);
+int uncompress_index_data(char *input, size_t size, struct postinglist *p);
 
 
 /* db.c */
@@ -74,3 +76,7 @@ unsigned int hash(const char *str);
 unsigned int nhash(const char *str, int len);
 size_t strlcpy(char *dst, const char *src, size_t siz);
 size_t strlcat(char *dst, const char *src, size_t siz);
+
+/* debug.c */
+void stack_trace(ucontext_t *uc);
+

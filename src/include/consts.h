@@ -120,15 +120,18 @@
 #define char_dict_size 10000
 #define word_dict_size 2000000
 
+#define MAX_BOARDS 300 
 #define MAX_NEXT_WORDS 7	/* 从某处开始可以组成的最大词数 */
 
 #define BOARD	 0
 #define ANNOUNCE 1
 
 
-#define INIT_POSTINGLIST_SIZE	1
+#define INIT_POSTINGLIST_SIZE 2 
 
 #define MAX_FILE_SIZE 2097152   /* 2 * 1024 * 1024 */
+
+#define MAX_POSTING_HASHSIZE 2097169   /* posting hash prime */
 
 #define MAX_WORD_LENGTH 30	/* 最长词的长度 中文15个字 */
 

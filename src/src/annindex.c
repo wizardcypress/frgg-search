@@ -8,7 +8,9 @@ extern off_t g_len;
 unsigned int g_docid = 1;
 unsigned int g_size = 400000;
 struct dict_t **g_bucket; 
-DB *g_dbp;
+char g_boards[MAX_BOARDS][BFNAMELEN+2];
+int g_nboards;
+DB *g_dbp, *g_tdbp;
 DBT g_key, g_data;
 
 
@@ -120,7 +122,7 @@ build_ann_index(char *bname)
 	/* TODO: cache, ensure the cache directory exists */
 	ann_traverse(annpath, index_file);
 	write_index_file(g_bucket, g_size, indexfile);
-	calc_doc_weight(bname, ANNOUNCE, g_docid - 1);
+	calc_doc_weight(ANNOUNCE);
 	set_annndocs_file(ndocsfile, bname);
 	fp = fopen(ndocsfile, "w");
 	if (fp == NULL) {

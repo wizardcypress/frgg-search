@@ -49,6 +49,8 @@
 #define set_config_file(buf, filename) \
 	sprintf(buf, "etc/%s", filename);
 
+#define SET_NFILE(buf, filename) \
+    snprintf(buf, sizeof(buf), "%s", filename);
 
 
 /* C99 provides __func__ as the name of the current function.

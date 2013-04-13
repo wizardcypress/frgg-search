@@ -3,7 +3,76 @@
 char *g_text;
 extern off_t g_pos;
 extern off_t g_len;
+char g_boards[MAX_BOARDS][BFNAMELEN+2];
+int g_nboards;
+DB *g_tdbp;
 
+int index_board(const char *bname, DB *dbp, DBT *key, DBT *data, unsigned int *pdocid,
+                struct dict_t ** bucket, size_t size) 
+{
+	char dirfile[PATH_MAX], indexfile[PATH_MAX];
+    char *word;
+	char filepath[PATH_MAX]; /* article file path */
+	char filename[20], postpath[PATH_MAX];
+	char cachedir[PATH_MAX];
+	char cachefile[PATH_MAX];
+    FILE *filelist;
+	gzFile cachefp;
+	int gzerr;
+	struct postinglist *p;
+
+	setboardfile(dirfile, bname, bname);
+	set_brdindex_file(indexfile, bname);
+    
+	if (!(filelist = fopen(dirfile, "r"))) {
+		ERROR1("open file %s failed", dirfile);
+        return -1;
+	}
+
+    /* ensure the cache directory exists */
+	setcachepath(cachedir, bname);
+	f_mkdir(cachedir, 0755);
+
+	while (fgets(filename, sizeof(filename), filelist)) {
+		filename[strlen(filename) - 1] = '\0';
+	
+		setboardfile(filepath, bname, filename);
+		ansi_filter(filepath);
+        
+        snprintf(postpath, sizeof(postpath), "%s/%s", bname, filename);
+        data->size = strlen(postpath) + 1;
+		data->data = postpath;
+			
+		if (g_len != 0) {
+			fprintf(stderr, "%d %s indexing %s\n", *pdocid, bname, filename);
+			/* save to cache file */
+			setcachefile(cachefile, bname, filename);
+			cachefp = gzopen(cachefile, "wb");
+			if (cachefp != NULL) {
+				if (gzwrite(cachefp, g_text, g_len) != g_len) 
+					ERROR(gzerror(cachefp, &gzerr));
+				gzclose(cachefp);
+			}
+			
+			g_pos = 0;
+			while ((word = next_token())) {
+                p = get_postinglist(bucket, size, word);
+				addto_postinglist(p, *pdocid);
+				if (p->freq >= p->size) /* is full */
+					double_postinglist(p);
+                free(word);
+			}
+			
+			/* write_docid2path */
+			dbp->put(dbp, NULL, key, data, 0);
+			(*pdocid)++;
+		}
+	}
+
+    write_index_file(bucket, size, indexfile);
+
+    return 0;
+}
 
 // single pass in-memory index
 /**1 output_file = new file()
@@ -20,58 +89,48 @@ extern off_t g_len;
  *12 writeblock(sorted_terms, dict, output_file)
  */
 int
-build_board_index(char *bname)
+build_board_index()
 {
-	char *word;
-	char dirfile[PATH_MAX], docid2path[PATH_MAX], indexfile[PATH_MAX];
-	char filepath[PATH_MAX]; /* article file path */
-	char filename[20];
-	char cachedir[PATH_MAX];
-	char cachefile[PATH_MAX];
-	char ndocsfile[PATH_MAX];
+    char docid2path[PATH_MAX];
+	char ndocsfile[PATH_MAX], bname[PATH_MAX];
+    char termfile[PATH_MAX];
 	DB *dbp;
 	DBT key, data;
 	int ret;
 	int result = -1;
-	FILE *filelist, *fp;
-	struct postinglist *p;
+	FILE  *fp;
 	unsigned int docid = 1;
-	gzFile cachefp;
-	int gzerr;
-
-	
-	setboardfile(dirfile, bname, bname);
-	set_brddocid2path_file(docid2path, bname);
-	set_brdindex_file(indexfile, bname);
 
 	/* Initialize the  DB structure.*/
 	ret = db_create(&dbp, NULL, 0);
+    ret |= db_create(&g_tdbp, NULL, 0);
 	if (ret != 0) {
 		ERROR("create db hanldle failed");
 		goto RETURN;
 	}
 
-	if (dbopen(dbp, docid2path, 1) != 0) {
-		ERROR1("open db %s failed", docid2path);
-		goto RETURN;		
-	}
-		
-	if (!(filelist = fopen(dirfile, "r"))) {
-		ERROR1("open file %s failed", dirfile);
-		goto CLEAN_DB;
-	}
-	
-	size_t size = 300000;	/* TODO: define this constant */
-	struct dict_t **bucket = new_postinglist_bucket(size);
-	if (bucket == NULL) {
-		ERROR1("new_dict size=%u failed", size);
-		goto CLEAN_FP;
-	}
-
 	g_text = malloc(MAX_FILE_SIZE);
 	if (g_text == NULL) {
 		ERROR("malloc failed");
-		goto CLEAN_MEM;
+		goto CLEAN_DB;
+	}
+    
+    snprintf(docid2path, sizeof(docid2path), "%s", BOARDS_DOCID2PATH); 
+    snprintf(termfile, sizeof(termfile), "%s", ALL_TERMS);
+    if (dbopen(dbp, docid2path, 1) != 0) {
+		ERROR1("open db %s failed", docid2path);
+		goto CLEAN_DB;
+	}
+    if (dbopen(g_tdbp, termfile, 1) != 0) {
+		ERROR1("open db %s failed", termfile);
+		goto CLEAN_DB;
+    }
+	
+	size_t size = MAX_POSTING_HASHSIZE;	/* TODO: define this constant */
+	struct dict_t **bucket = new_postinglist_bucket(size + 10);
+	if (bucket == NULL) {
+		ERROR1("new_dict size=%u failed", size);
+		goto CLEAN_DB;
 	}
 
 	/* Zero out the DBTs before using them. */
@@ -80,84 +139,88 @@ build_board_index(char *bname)
 	
 	key.size = sizeof(unsigned int);
 	key.data = &docid;
-	
-	/* ensure the cache directory exists */
-	setcachepath(cachedir, bname);
-	f_mkdir(cachedir, 0755);
+    
+    FILE *boardlist = fopen(BOARDS_LIST, "r");
+    if (boardlist == NULL) {
+        ERROR2("open %s fail: %s", BOARDS_LIST, strerror(errno));
+        goto CLEAN_MEM;
+    }
+    
+    g_nboards = 0;
+    while(fgets(bname, sizeof(bname), boardlist)) {
+        if (bname[strlen(bname)-1] == '\n')
+            bname[strlen(bname)-1] = '\0';
+        if (bname[0] == '\0') continue;
+        strncpy(g_boards[g_nboards], bname, sizeof(g_boards[0]));
+        g_nboards++;
+        index_board(bname, dbp, &key, &data, &docid, bucket, size);
+    }
 
-	while (fgets(filename, sizeof(filename), filelist)) {
-		filename[strlen(filename) - 1] = '\0';
-	
-		data.size = strlen(filename) + 1;
-		data.data = filename;
-		
-		setboardfile(filepath, bname, filename);
-		ansi_filter(filepath);
-		
-		if (g_len != 0) {
-			fprintf(stderr, "%d indexing %s\n", docid, filename);
-			/* save to cache file */
-			setcachefile(cachefile, bname, filename);
-			cachefp = gzopen(cachefile, "wb");
-			if (cachefp != NULL) {
-				if (gzwrite(cachefp, g_text, g_len) != g_len) 
-					ERROR(gzerror(cachefp, &gzerr));
-				gzclose(cachefp);
-			}
-			
-			g_pos = 0;
-			while ((word = next_token())) {
-				//DEBUG1("%s", word);
-				p = get_postinglist(bucket, size, word);
-				if (p->freq == p->size) /* is full */
-					double_postinglist(p);
-				addto_postinglist(p, docid);
-			}
-			
-			/* write_docid2path */
-			dbp->put(dbp, NULL, &key, &data, 0);
-			docid++;
-		}
-	}
-
-	write_index_file(bucket, size, indexfile);
-	calc_doc_weight(bname, BOARD, docid - 1);
-	set_brdndocs_file(ndocsfile, bname);
+    snprintf(ndocsfile, sizeof(ndocsfile), "%s", BOARDS_NDOCS);
 	fp = fopen(ndocsfile, "w");
 	if (fp == NULL) {
 		ERROR1("fopen %s failed", ndocsfile);
-		goto CLEAN;
+        goto CLEAN_MEM;
 	}
 	fprintf(fp, "%u", docid - 1);
 	fclose(fp);
 
 	/* it's ok */
 	result = 0;
-CLEAN:	
-	free(g_text);	
 CLEAN_MEM:
 	free(bucket);
-CLEAN_FP:
-	fclose(filelist);	
 CLEAN_DB:
 	if (dbp != NULL)
 		dbp->close(dbp, 0);
 RETURN:
+	free(g_text);	
 	return result;
 }
 
 
+static void sigsegv_handler(int sig, siginfo_t *info, void *secret)
+{
+    ucontext_t *uc = (ucontext_t*)secret;
+    ERROR1("Agent crashed by signal: %d", sig);
+    ERROR("---- STACK TRACE");
+    stack_trace(uc);
+    ERROR("---- END STACK TRACE");
+    ERROR("Agent will shutdown now...");
+}
+
+static void sigterm_handler(int sig)
+{
+    ERROR("Received SIGTERM, shutdown...");
+}
+
+void setup_signal_handlers()
+{
+    struct sigaction act;
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0;
+    act.sa_handler = sigterm_handler;
+    sigaction(SIGTERM, &act, NULL);
+
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = SA_NODEFER | SA_RESETHAND | SA_SIGINFO;
+    act.sa_sigaction = sigsegv_handler;
+    sigaction(SIGSEGV, &act, NULL);
+    sigaction(SIGBUS, &act, NULL);
+    sigaction(SIGFPE, &act, NULL);
+    sigaction(SIGILL, &act, NULL);
+}
+
+
+
 int main(int argc, char *argv[])
 {
-	if (argc < 2) {
-		printf("usage: %s boardname\n", argv[0]);
-		return 0;
-	}
-	
 	chdir(FRGGHOME);
-	
+    
+    setup_signal_handlers();
 	init_segment();		/* load dict */
-	build_board_index(argv[1]);
-	cleanup_segment();
+	build_board_index();
+    merge_index(BOARD);
+    calc_doc_weight(BOARD);
+	//cleanup_segment();
 	return 0;
 }

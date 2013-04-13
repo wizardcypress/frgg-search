@@ -317,7 +317,7 @@ get_ch_word()
 		return next_token();
 	} else {
 		g_pos += strlen(chunks[0].words[0]);
-		return chunks[0].words[0];
+		return strdup(chunks[0].words[0]);
 	}
 }
 

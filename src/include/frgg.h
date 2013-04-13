@@ -17,9 +17,15 @@
 #include <assert.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#ifdef __linux__
+#include <ucontext.h> /* for dump stack */
+#endif
+#include <execinfo.h>
+#include <signal.h>
 #include <sys/timeb.h>		/* for ftime(3) */
 
 #include <db.h>	 		/* for bsddb */
+#include <snappy-c.h> /* for snappy compress */
 #include "zlib.h"
 
 #include "consts.h"
