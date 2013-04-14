@@ -41,8 +41,8 @@ char *next_token();
 
 
 /* formula.c */
-float weight_d_t(unsigned short tf);
-float weight_q_t(unsigned int df, unsigned int ndocs);
+double weight_d_t(unsigned short tf);
+double weight_q_t(unsigned int df, unsigned int ndocs);
 
 
 /* index.c */
@@ -80,3 +80,9 @@ size_t strlcat(char *dst, const char *src, size_t siz);
 /* debug.c */
 void stack_trace(ucontext_t *uc);
 void setup_signal_handlers();
+
+/* compress */
+
+size_t 
+compress_index_data(struct postinglist *p, char **pdatabuf, size_t *pdatabuf_size) ;
+int uncompress_index_data(char *input, size_t input_size, struct postinglist *p);

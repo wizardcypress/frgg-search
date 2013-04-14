@@ -32,7 +32,6 @@ new_postinglist(size_t size)
 	return p;
 }
 
-
 /**
  * if term not in dict, add it
  */
@@ -106,119 +105,6 @@ addto_postinglist(struct postinglist *p, unsigned int id)
 	}
 }
 
-/*
- * snappy compress.  return compress length 
- */
-size_t compress_index_data(struct postinglist *p, char **pdatabuf, 
-                            size_t *pdatabuf_size) 
-{
-    size_t init_size = sizeof(p->freq)  
-        + sizeof(*(p->docs)) * p->freq + sizeof(*(p->tf)) * p->freq;
-    char *postinglist_buf = (char*) malloc(init_size);
-    if (postinglist_buf == NULL) {
-        ERROR1("malloc fail size=%d\n", init_size);
-        return 0;
-    }
-    char *cur = postinglist_buf;
-    memcpy(cur, &p->freq, sizeof(p->freq));
-    cur += sizeof(p->freq);
-    memcpy(cur, p->docs, sizeof(*p->docs) * p->freq); 
-    cur += sizeof(*p->docs) * p->freq;
-    memcpy(cur, p->tf, sizeof(*p->tf) * p->freq);
-    
-    size_t max_length;
-    max_length = snappy_max_compressed_length(init_size);
-    if (max_length > *pdatabuf_size) {
-        *pdatabuf = realloc(*pdatabuf, max_length + 1);
-        if (*pdatabuf == NULL) {
-            ERROR("Oh shit realloc fail\n");
-            return 0;
-        }
-        *pdatabuf_size = max_length;
-    }
-    
-    int result;
-    if ((result = snappy_compress(postinglist_buf, init_size, 
-                        *pdatabuf, pdatabuf_size)) != SNAPPY_OK) {
-        switch (result) {
-            case SNAPPY_INVALID_INPUT:
-                ERROR("snappy invalid input.\n");
-                break;
-            case SNAPPY_BUFFER_TOO_SMALL:
-                ERROR("snappy output buffer too small\n");
-                break;
-            default:
-                ERROR("snappy unknow error");
-        }
-        *pdatabuf_size = 0;
-    }
-    free(postinglist_buf);
-    return *pdatabuf_size;
-}
-
-static int 
-dump_snappy_error(int result)
-{
-    switch (result) {
-        case SNAPPY_INVALID_INPUT:
-            ERROR("snappy invalid input.\n");
-            break;
-        case SNAPPY_BUFFER_TOO_SMALL:
-            ERROR("snappy output buffer too small\n");
-            break;
-        default:
-            ERROR("snappy unknow error");
-    }
-    return 0;
-}
-/*
- * snappy uncompress 
- */
-int uncompress_index_data(char *input, size_t input_size, struct postinglist *p)
-{
-    size_t output_size;
-    int result;
-
-    if ((result=snappy_uncompressed_length(input, input_size, &output_size)) != SNAPPY_OK) {
-        dump_snappy_error(result);
-        return -1;
-    }
-    char *output = (char*)malloc(output_size);
-    if ((result = snappy_uncompress(input, input_size, output, &output_size)) != SNAPPY_OK) {
-        dump_snappy_error(result);
-        goto fail;
-    }
-    char *cur = output;
-    memcpy(&p->freq, cur, sizeof(p->freq));
-
-    if (p->freq > p->size) {
-        if (p->size > 0) {
-            p->docs = realloc(p->docs, p->freq * sizeof(*p->docs));
-            p->tf = realloc(p->tf, p->freq * sizeof(*p->tf)); 
-        } else {
-            p->docs = calloc(p->freq * sizeof(*p->docs) + 1, 1);
-            p->tf = calloc(p->freq * sizeof(*p->tf) + 1, 1); 
-        }
-        p->size = p->freq;
-    }
-    if (p->docs == NULL || p->tf == NULL) {
-		ERROR("calloc p->docs or p->tf failed");
-        p->freq = 0;
-        goto fail;
-    }
-
-    cur += sizeof(p->freq);
-    memcpy(p->docs, cur, sizeof(*p->docs) * p->freq);
-    cur += sizeof(*p->docs) * p->freq;
-    memcpy(p->tf, cur, sizeof(*p->tf) * p->freq);
-    
-    free(output);
-    return 0;
-
-fail:
-    free(output);
-    return -1;
-} 
 
 /**
  * varible byte codes
@@ -449,9 +335,11 @@ merge_index(int type)
     while((ret = term_cursor->get(term_cursor, &term, &val, DB_NEXT)) == 0) {
         p.freq = 0;
         for(i = 0; i < g_nboards; i++)  {
+            memset(&val, 0, sizeof(val));
             ret = dbp[i]->get(dbp[i], NULL, &term, &val, 0);
-            if (!val.data) continue;
-            uncompress_index_data((char*)val.data, val.size, &pn);
+            if (!val.data)  continue;
+            if (uncompress_index_data((char*)val.data, val.size, &pn) < 0)
+                continue;
             if (pn.freq == 0) continue;
             pn.size = pn.freq;
             merge_postinglist(&p, &pn, &ptm);
@@ -581,9 +469,11 @@ calc_doc_weight(int type)
 
         wdbp->put(wdbp, NULL, &key, &value, 0);
 	}
+
 	free(weight);
     free_postinglist(&p);
 	cursorp->close(cursorp);
     dbp->close(dbp, 0);
+    wdbp->close(wdbp, 0);
 	return 0;
 }

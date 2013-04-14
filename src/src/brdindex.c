@@ -188,6 +188,6 @@ int main(int argc, char *argv[])
 	build_board_index();
     merge_index(BOARD);
     calc_doc_weight(BOARD);
-	//cleanup_segment();
+	cleanup_segment();
 	return 0;
 }

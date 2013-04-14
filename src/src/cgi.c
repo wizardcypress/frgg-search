@@ -68,6 +68,7 @@ int main(int argc, char *argv[])
 	if (raw_query_str == NULL)
 		bad_request();
 	chdir(FRGGHOME);
+    setup_signal_handlers();
 	decode(raw_query_str);
 	if (query_str[0] == '\0')
 		bad_request();

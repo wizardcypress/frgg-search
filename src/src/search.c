@@ -14,10 +14,11 @@ get_number_of_docs(const char *bname, int type)
 	FILE *fp;
 	unsigned int n_docs;
 
-	if (type == BOARD) 
-		snprintf(ndocsfile, sizeof(ndocsfile), "index/frgg.%s.brdndocs", bname);
-	else
-		snprintf(ndocsfile, sizeof(ndocsfile), "index/frgg.%s.annndocs", bname);
+	if (type == BOARD)  {
+        SET_NFILE(ndocsfile, BOARDS_NDOCS);
+    } else {
+        SET_NFILE(ndocsfile, ANN_NDOCS);
+    }
 
 	fp = fopen(ndocsfile, "r");
 	if (fp == NULL) {
@@ -68,40 +69,44 @@ cmpdoc(const void *ptr1, const void *ptr2)
 int
 ranking(const char *bname, int type)
 {
-	DB *dbp;
+	DB *dbp, *wdbp;
 	DBT key, value;
-	int ret, i, j, b;
+	int ret, i, j;
 	int result = -1;	/* return value */
-	size_t buflen;
-	unsigned int freq;
-	unsigned int docid;
-	unsigned int last_docid;
-	unsigned int n;
-	unsigned short tf;
 	char indexfile[PATH_MAX];
 	char weightfile[PATH_MAX];
 	size_t n_docs;
-	unsigned char *bytes;
-	FILE *fp;
 	float wqt;
+    struct postinglist p;
 
-	if (type == BOARD)
-		snprintf(indexfile, sizeof(indexfile), "index/frgg.%s.brdidx", bname);
-	else
-		snprintf(indexfile, sizeof(indexfile), "index/frgg.%s.annidx", bname);
-
-	
+	if (type == BOARD) {
+        SET_NFILE(indexfile, BOARDS_INDEX);
+        SET_NFILE(weightfile, BOARDS_WEIGHT);
+    } else {
+        SET_NFILE(indexfile, ANN_INDEX);
+        SET_NFILE(weightfile, ANN_WEIGHT);
+    }
+    
+    dbp = wdbp = NULL;
 	/* Initialize the DB structure.*/
-	ret = db_create(&dbp, NULL, 0);
-	if (ret != 0) {
+	if ((ret = db_create(&dbp, NULL, 0)) != 0) {
 		ERROR("create db hanldle failed");
 		goto RETURN;
 	}
+    if ((ret = db_create(&wdbp, NULL, 0)) != 0) {
+		ERROR("create db hanldle failed");
+        dbp->close(dbp, 0);
+		goto RETURN;
+    }
 
 	if (dbopen(dbp, indexfile, 0) != 0) {
 		ERROR1("open db %s failed", indexfile);
-		goto RETURN;
+		goto CLEAN_DB;
 	}
+    if (dbopen(wdbp, weightfile, 0) != 0) {
+        ERROR1("open db %s failed", weightfile);
+        goto CLEAN_DB;
+    }
 
 	memset(&key, 0, sizeof(key));
 	memset(&value, 0, sizeof(value));
@@ -112,13 +117,14 @@ ranking(const char *bname, int type)
 		goto CLEAN_DB;
 	}
 	
-	g_score = calloc(n_docs + 1, sizeof(float));
-	g_match = calloc(n_docs + 1, sizeof(short));
+	g_score = calloc(n_docs + 1, sizeof(double));
+	g_match = calloc(n_docs + 1, sizeof(int));
 	if (g_score == NULL || g_match == NULL) {
 		ERROR("calloc failed");
 		goto CLEAN_DB;
 	}
-	
+    
+    memset(&p, 0, sizeof(p));
 	for (i = 0; i < g_nterm; i++) {
 		do_log(LOG_TRACE, "%u fetching postlist for %s", time(NULL), g_termlist[i]);
 		key.size = strlen(g_termlist[i]) + 1;
@@ -129,59 +135,41 @@ ranking(const char *bname, int type)
 			continue;
 		}
 		
-		freq = *((unsigned int *)value.data);
-		buflen = sizeof(freq);
 		//fprintf(stderr, "%s doc freq: %u\n", term, freq);
+        ret = uncompress_index_data((char*)value.data, value.size, &p);
 
-		wqt = weight_q_t(freq, n_docs);
-		/* decompress data encoded by varible byte encoding, see vb_encode@index.c */
-		bytes = (unsigned char *)(value.data + buflen);
-		n = 0, b = 0, j = 0, docid = 0, last_docid = 0;
-		while (j < freq) {
-			if (bytes[b] & 0x80) {	/* last byte, so we got a value */
-				n = 128 * n + (bytes[b] & ~0x80); /* remove flag bit */
-				if (docid == 0) {
-					docid = last_docid + n;
-					last_docid = docid;
-				} else {
-					tf = n;
-					g_score[docid] += weight_d_t(tf) * wqt;
-					g_match[docid]++;
-					/* reset docid to indicate calc docid next time */
-					docid = 0;
-					j++;
-				}
-				n = 0;
-			} else {
-				n = 128 * n + bytes[b];
-			}
-			b++;
-		}
-	}
+        if (ret != 0) continue;
+		wqt = weight_q_t(p.freq, n_docs);
+        for (j = 0; j < p.freq; j++) {
+            g_score[p.docs[j]] += weight_d_t(p.tf[j]) * wqt ;
+            g_match[p.docs[j]]++;
+        }
+    }
 
 	/* document weight */
-	if (type == BOARD)
-		snprintf(weightfile, sizeof(weightfile), "index/frgg.%s.brd.weight",  bname);		/* document weight, unsigned int -> float */
-	else
-		snprintf(weightfile, sizeof(weightfile), "index/frgg.%s.ann.weight",  bname);		/* document weight, unsigned int -> float */
+	if (type == BOARD) {
+        SET_NFILE(weightfile, BOARDS_WEIGHT);   
+    } else {
+        SET_NFILE(weightfile, ANN_WEIGHT);
+    }
 	
-	fp = fopen(weightfile, "r");
-	if (fp == NULL) {
-		ERROR1("fopen %s failed", weightfile);
-		goto CLEAN_MEM;
-	}
-	
-	float *Weight = malloc(sizeof(float) * (n_docs + 1));
-	if (Weight == NULL) {
-		ERROR("malloc failed");
-		goto CLEAN_FP;
-	}
-	
-	/* read document weight */
-	while (fread(&docid, sizeof(docid), 1, fp)) 
-		fread(Weight + docid, sizeof(float), 1, fp);
+	double *Weight = malloc(sizeof(double) * (n_docs + 1));
 
-	g_cnt = 0;
+    if (Weight == NULL) {
+		ERROR("malloc failed");
+		goto CLEAN_GMEM;
+	}
+    
+    key.size = sizeof(i);
+    key.data = &i;
+    for(i = 1; i <= n_docs; i++) {
+        memset(&value, 0, sizeof(value)); 
+        ret = wdbp->get(wdbp, NULL, &key, &value, 0);
+        assert(value.data);
+        Weight[i] = *(double*)value.data;
+    }
+	
+    g_cnt = 0;
 	for (i = n_docs; i >= 1; --i) {
 		if (g_match[i] == g_nterm) {
 			g_score[i] /= Weight[i];
@@ -213,14 +201,14 @@ ranking(const char *bname, int type)
 	result = 0;
 	
 	free(Weight);
-CLEAN_FP:	
-	fclose(fp);
-CLEAN_MEM:	
+CLEAN_GMEM:
 	free(g_match);
 	free(g_score);
 CLEAN_DB:
 	if (dbp != NULL)
 		dbp->close(dbp, 0);
+    if (wdbp != NULL)
+        wdbp->close(wdbp, 0);
 RETURN:	
 	return result;
 }
@@ -238,10 +226,11 @@ gen_result(char *bname, int type, int start)
 	int ret, i;
 	char docid2path[PATH_MAX];
 
-	if (type == BOARD)
-		snprintf(docid2path, sizeof(docid2path), "index/frgg.%s.brd.docid2path",  bname);	/* docid to disk location */
-	else
-		snprintf(docid2path, sizeof(docid2path), "index/frgg.%s.ann.docid2path",  bname);	/* docid to disk location */
+	if (type == BOARD) {
+        SET_NFILE(docid2path, BOARDS_DOCID2PATH);
+    } else {
+        SET_NFILE(docid2path, ANN_DOCID2PATH);
+    }
 	
 	ret = db_create(&dbp, NULL, 0);
 	if (ret != 0) {
@@ -261,13 +250,12 @@ gen_result(char *bname, int type, int start)
 	key.size = sizeof(unsigned int);
 	g_fname_cnt = 0;
 
-	for (i = start; i < g_cnt; ++i) {
+	for (i = start; i < g_cnt && i < start + MAX_PAGE_SIZE; ++i) {
 		key.data = &g_docidlist[i];
 		dbp->get(dbp, NULL, &key, &value, 0);
 		g_filename[g_fname_cnt++] = strdup((char *)value.data);
-		if (g_fname_cnt == MAX_PAGE_SIZE)
-			break;
-		//printf("%u %s\n", g_docidlist[i], g_filename[g_fname_cnt-1]);
+
+		//fprintf(stderr, "%u %s\n", g_docidlist[i], g_filename[g_fname_cnt-1]);
 	}
 	if (dbp != NULL) 
 		dbp->close(dbp, 0);
@@ -474,11 +462,21 @@ no_queryterm_line(char *line)
 	return 1;
 }
 
-
-
-void show_board_result(char *bname)
+/* split: boardname/filename -> boardname, filename */
+int split_path(char *path, char *bname, char *filename)
 {
-	char filename[PATH_MAX];
+    while(*path != '/') *bname++ = *path++;
+    *bname = '\0';
+    path++;
+    while(*path) *filename++ = *path++;
+    return 0;
+}
+
+
+void show_board_result()
+{
+	char bname[PATH_MAX], filename[PATH_MAX];
+    char cachefile[PATH_MAX];
 	int i, len;
 	int nline;
 	char line[512], output[1024];
@@ -491,8 +489,11 @@ void show_board_result(char *bname)
 		puts("<table border='0' cellpadding='0' cellspacing='0' id='1'><tr><td class=f>");
 		
 		/* Éú³ÉÕªÒª here */
-		setcachefile(filename, bname, g_filename[i]);
-		fp = gzopen(filename, "rb");
+		//setcachefile(filename, bname, g_filename[i]);
+        split_path(g_filename[i], bname, filename); 
+        setcachefile(cachefile, bname, filename);
+
+		fp = gzopen(cachefile, "rb");
 		if (fp == NULL) {
 			ERROR1("gzopen %s failed", filename);
 			continue;
@@ -520,8 +521,8 @@ void show_board_result(char *bname)
 		}
 		
 		char link[256], cache[256];
-		snprintf(link, sizeof(link), "http://bbs.sysu.edu.cn/bbscon?board=%s&file=%s", bname, g_filename[i]);
-		snprintf(cache, sizeof(cache), "/cgi-bin/cache?board=%s&file=%s", bname, g_filename[i]);
+		snprintf(link, sizeof(link), "http://bbs.sysu.edu.cn/bbscon?board=%s&file=%s", bname, filename);
+		snprintf(cache, sizeof(cache), "/cgi-bin/cache?board=%s&file=%s", bname, filename);
 
 		printf("<a href='%s' target='_blank'><font size='3'>%s</font></a>&nbsp;&nbsp;&nbsp;-&nbsp;<font color=#696969>%s</font>",  link, emphasize(title, output), author);
 		puts("<br><font size='-1'>");
@@ -848,7 +849,7 @@ show_result(char *bname, char *query_str, int type, int start, struct timeb *bef
 	show_right_column();
 	
 	if (type == BOARD)
-		show_board_result(bname);
+		show_board_result();
 	else
 		show_ann_result();
 	
