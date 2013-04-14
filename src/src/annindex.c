@@ -6,7 +6,8 @@ extern off_t g_len;
 
 /* global varibles for Announce indexing */
 unsigned int g_docid = 1;
-unsigned int g_size = 400000;
+unsigned int g_size = MAX_POSTING_HASHSIZE;
+
 struct dict_t **g_bucket; 
 char g_boards[MAX_BOARDS][BFNAMELEN+2];
 int g_nboards;
@@ -29,9 +30,10 @@ index_file(char *filename)
 		while ((word = next_token())) {
 			//DEBUG1("%s", word);
 			p = get_postinglist(g_bucket, g_size, word);
-			if (p->freq == p->size) /* is full */
-				double_postinglist(p);
 			addto_postinglist(p, g_docid);
+			if (p->freq >= p->size) /* is full */
+				double_postinglist(p);
+            free(word);
 		}
 		g_data.size = strlen(filename) + 1;
 		g_data.data = filename;		
@@ -74,31 +76,44 @@ ann_traverse(char *directory, int (*process_func)(char *))
  * @TODO
  */
 int
-build_ann_index(char *bname)
+build_ann_index()
 {
 	char docid2path[PATH_MAX], indexfile[PATH_MAX];
 	char annpath[PATH_MAX];
 	char ndocsfile[PATH_MAX];
+    char termfile[PATH_MAX];
 	int ret;
 	int result = -1;
-	FILE *fp;
-	
-	
-	snprintf(annpath, sizeof(annpath), "data/0Announce/%s", bname);
-	set_anndocid2path_file(docid2path, bname);
-	set_annindex_file(indexfile, bname);
+	FILE *fp, *boardlist;
+    char bname[PATH_MAX];
+    
+    SET_NFILE(docid2path, ANN_DOCID2PATH);
+    SET_NFILE(termfile, ALL_TERMS);
+
+    if ((boardlist = fopen(BOARDS_LIST, "r")) == NULL) {
+        ERROR("open board list fail");
+        return -1;
+    }
 
 	/* Initialize the DB structure.*/
-	ret = db_create(&g_dbp, NULL, 0);
-	if (ret != 0) {
+	if ((ret = db_create(&g_dbp, NULL, 0)) != 0) {
 		ERROR("create db hanldle failed");
 		goto RETURN;
 	}
-
+    if ((ret = db_create(&g_tdbp, NULL, 0)) != 0) {
+        ERROR("create g_tdbp handler failed");
+        g_dbp->close(g_dbp, 0);
+        goto RETURN;
+    }
+    
 	if (dbopen(g_dbp, docid2path, 1) != 0) {
 		ERROR1("open db %s failed", docid2path);
 		goto RETURN;		
 	}
+    if (dbopen(g_tdbp, termfile, 1) != 0) {
+        ERROR1("open db %s failed", termfile);
+        goto CLEAN_DB;
+    }
 
 	g_bucket = new_postinglist_bucket(g_size);
 	if (g_bucket == NULL) {
@@ -118,12 +133,23 @@ build_ann_index(char *bname)
 	
 	g_key.size = sizeof(unsigned int);
 	g_key.data = &g_docid;
+    
+    g_nboards = 0;
+    while(fgets(bname, sizeof(bname), boardlist)) {
+        if (bname[strlen(bname)-1] == '\n') 
+            bname[strlen(bname)-1] = '\0';
+        
+        SET_NFILE(g_boards[g_nboards], bname);
+        g_nboards++;
+        snprintf(annpath, sizeof(annpath), "data/0Announce/%s", bname);
+	    set_annindex_file(indexfile, bname);
 
-	/* TODO: cache, ensure the cache directory exists */
-	ann_traverse(annpath, index_file);
-	write_index_file(g_bucket, g_size, indexfile);
-	calc_doc_weight(ANNOUNCE);
-	set_annndocs_file(ndocsfile, bname);
+	    /* TODO: cache, ensure the cache directory exists */
+	    ann_traverse(annpath, index_file);
+	    write_index_file(g_bucket, g_size, indexfile);
+    }
+    
+    SET_NFILE(ndocsfile, ANN_NDOCS);
 	fp = fopen(ndocsfile, "w");
 	if (fp == NULL) {
 		ERROR1("fopen %s failed", ndocsfile);
@@ -142,19 +168,22 @@ CLEAN_DB:
 	if (g_dbp != NULL)
 		g_dbp->close(g_dbp, 0);
 RETURN:
+    fclose(boardlist);
 	return result;
 }
 
 
+
 int main(int argc, char *argv[])
 {
-	if (argc < 2) {
-		printf("usage: %s boardname\n", argv[0]);
-		return 0;
-	}
 	chdir(FRGGHOME);
+    /* setup signal hanlders */
+    setup_signal_handlers();
+
 	init_segment();		/* load dict */
-	build_ann_index(argv[1]);
+	build_ann_index();
+    merge_index(ANNOUNCE);
+	calc_doc_weight(ANNOUNCE);
 	cleanup_segment();
 	return 0;
 }

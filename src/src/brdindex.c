@@ -178,45 +178,12 @@ RETURN:
 }
 
 
-static void sigsegv_handler(int sig, siginfo_t *info, void *secret)
-{
-    ucontext_t *uc = (ucontext_t*)secret;
-    ERROR1("Agent crashed by signal: %d", sig);
-    ERROR("---- STACK TRACE");
-    stack_trace(uc);
-    ERROR("---- END STACK TRACE");
-    ERROR("Agent will shutdown now...");
-}
-
-static void sigterm_handler(int sig)
-{
-    ERROR("Received SIGTERM, shutdown...");
-}
-
-void setup_signal_handlers()
-{
-    struct sigaction act;
-    sigemptyset(&act.sa_mask);
-    act.sa_flags = 0;
-    act.sa_handler = sigterm_handler;
-    sigaction(SIGTERM, &act, NULL);
-
-    sigemptyset(&act.sa_mask);
-    act.sa_flags = SA_NODEFER | SA_RESETHAND | SA_SIGINFO;
-    act.sa_sigaction = sigsegv_handler;
-    sigaction(SIGSEGV, &act, NULL);
-    sigaction(SIGBUS, &act, NULL);
-    sigaction(SIGFPE, &act, NULL);
-    sigaction(SIGILL, &act, NULL);
-}
-
-
-
 int main(int argc, char *argv[])
 {
 	chdir(FRGGHOME);
-    
+    /* setup signal hanlders */
     setup_signal_handlers();
+
 	init_segment();		/* load dict */
 	build_board_index();
     merge_index(BOARD);

@@ -23,7 +23,6 @@ struct postinglist
 struct dict_t
 {
 	char *term;
-    size_t term_size;
 	struct postinglist *p;
 	struct dict_t *next;
 };

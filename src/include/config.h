@@ -7,6 +7,7 @@
 #define BOARDS_NDOCS "index/boards.ndocs"
 #define BOARDS_INDEX "index/boards.idx"
 #define BOARDS_WEIGHT "index/boards.weight"
+#define ANN_DOCID2PATH "index/ann.docid2path"
 #define ANN_INDEX "index/ann.idx"
 #define ANN_NDOCS "index/ann.ndocs"
 #define ANN_WEIGHT "index/ann.weight"

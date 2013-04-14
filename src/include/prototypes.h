@@ -79,4 +79,4 @@ size_t strlcat(char *dst, const char *src, size_t siz);
 
 /* debug.c */
 void stack_trace(ucontext_t *uc);
-
+void setup_signal_handlers();

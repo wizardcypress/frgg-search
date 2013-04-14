@@ -51,8 +51,7 @@ get_postinglist(struct dict_t **bucket, size_t size, char *term)
 	struct dict_t *entry = bucket[h];
 	while (entry != NULL) {
 		//DEBUG2("%s, %s", term, entry->term);
-		if (strlen(term) == entry->term_size && 
-                strncmp(term, entry->term, entry->term_size) == 0) {
+		if (strcmp(term, entry->term) == 0) {
 			return entry->p;
         }
 		entry = entry->next;
@@ -65,14 +64,12 @@ get_postinglist(struct dict_t **bucket, size_t size, char *term)
 		}
 		/* g_nterms++; */
 		entry->term = strdup(term);
-        entry->term_size = strlen(term);
 		entry->p = new_postinglist(INIT_POSTINGLIST_SIZE);
 		entry->next = bucket[h];
 		bucket[h] = entry;
 	}
 	return entry->p;
 }
-
 
 int
 double_postinglist(struct postinglist *p)
@@ -123,7 +120,6 @@ size_t compress_index_data(struct postinglist *p, char **pdatabuf,
         return 0;
     }
     char *cur = postinglist_buf;
-    int i;
     memcpy(cur, &p->freq, sizeof(p->freq));
     cur += sizeof(p->freq);
     memcpy(cur, p->docs, sizeof(*p->docs) * p->freq); 
@@ -160,6 +156,21 @@ size_t compress_index_data(struct postinglist *p, char **pdatabuf,
     return *pdatabuf_size;
 }
 
+static int 
+dump_snappy_error(int result)
+{
+    switch (result) {
+        case SNAPPY_INVALID_INPUT:
+            ERROR("snappy invalid input.\n");
+            break;
+        case SNAPPY_BUFFER_TOO_SMALL:
+            ERROR("snappy output buffer too small\n");
+            break;
+        default:
+            ERROR("snappy unknow error");
+    }
+    return 0;
+}
 /*
  * snappy uncompress 
  */
@@ -169,21 +180,12 @@ int uncompress_index_data(char *input, size_t input_size, struct postinglist *p)
     int result;
 
     if ((result=snappy_uncompressed_length(input, input_size, &output_size)) != SNAPPY_OK) {
-         switch (result) {
-            case SNAPPY_INVALID_INPUT:
-                ERROR("snappy invalid input.\n");
-                break;
-            case SNAPPY_BUFFER_TOO_SMALL:
-                ERROR("snappy output buffer too small\n");
-                break;
-            default:
-                ERROR("snappy unknow error");
-        }
+        dump_snappy_error(result);
         return -1;
     }
     char *output = (char*)malloc(output_size);
-    if (snappy_uncompress(input, input_size, output, &output_size) != SNAPPY_OK) {
-        ERROR("snappy uncompress fail\n");
+    if ((result = snappy_uncompress(input, input_size, output, &output_size)) != SNAPPY_OK) {
+        dump_snappy_error(result);
         goto fail;
     }
     char *cur = output;
@@ -318,6 +320,7 @@ write_index_file(struct dict_t **dict, size_t size, const char *indexfile)
 			free(ent->p->docs);
 			free(ent->p->tf);
 			free(ent->p);
+            free(ent->term);
 			tmp = ent;
 			ent = ent->next;
 			free(tmp);
@@ -335,7 +338,8 @@ RETURN:
 
 /* merge postinglist p, pn to p
  */
-int merge_postinglist(struct postinglist *p, struct postinglist *pn, struct postinglist *pret)
+int 
+merge_postinglist(struct postinglist *p, struct postinglist *pn, struct postinglist *pret)
 {
     int idx1, idx2;
     pret->freq = 0;
@@ -376,7 +380,8 @@ int merge_postinglist(struct postinglist *p, struct postinglist *pn, struct post
     return 0;
 }
 
-int free_postinglist(struct postinglist *p)
+int 
+free_postinglist(struct postinglist *p)
 {
     if (p->docs) free(p->docs);
     if (p->tf) free(p->tf);
@@ -387,7 +392,8 @@ int free_postinglist(struct postinglist *p)
 /* 
  * merge index
  */
-int merge_index(int type)
+int 
+merge_index(int type)
 {
     DB *dbp[MAX_BOARDS], *findex_dbp;
     DBC *term_cursor;
@@ -440,7 +446,6 @@ int merge_index(int type)
     memset(&term, 0, sizeof(term));
     memset(&val, 0, sizeof(val));
     
-    int pcnt = 0;
     while((ret = term_cursor->get(term_cursor, &term, &val, DB_NEXT)) == 0) {
         p.freq = 0;
         for(i = 0; i < g_nboards; i++)  {
