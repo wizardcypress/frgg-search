@@ -469,6 +469,7 @@ int split_path(char *path, char *bname, char *filename)
     *bname = '\0';
     path++;
     while(*path) *filename++ = *path++;
+    *filename = '\0';
     return 0;
 }
 
@@ -491,11 +492,12 @@ void show_board_result()
 		/* Éú³ÉÕªÒª here */
 		//setcachefile(filename, bname, g_filename[i]);
         split_path(g_filename[i], bname, filename); 
+        //ERROR3("%s %s %s\n", g_filename[i], bname, filename);
         setcachefile(cachefile, bname, filename);
 
 		fp = gzopen(cachefile, "rb");
 		if (fp == NULL) {
-			ERROR1("gzopen %s failed", filename);
+			ERROR1("gzopen %s failed", cachefile);
 			continue;
 		}
 
