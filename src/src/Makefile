@@ -6,15 +6,18 @@ CFLAGS = -Wall -g -D_GNU_SOURCE
 include_opt = -I../include -I$(db_include_path)
 library_opt = -L$(db_library_path) -ldb -lm -lz -lsnappy
 
-all: buildbrdindex buildannindex search fetch_filelist get_files cache
+all: buildbrdindex buildannindex search fetch_filelist get_files cache filelist
 
-update: buildbrdindex buildannindex search fetch_filelist get_files cache
+update: buildbrdindex buildannindex search fetch_filelist get_files cache filelist
 	cp search ../../www/cgi-bin/;
 	cp buildbrdindex ../../bin/;
 	cp buildannindex ../../bin/;
 	cp fetch_filelist ../../bin/;
 	cp get_files ../../bin/;
 	cp cache ../../www/cgi-bin/;
+
+filelist: filelist.o log.o
+	${CC} ${CFLAGS} -o $@ $^ ${include_opt}
 
 fetch_filelist: fetch_filelist.o log.o fileop.o
 	${CC} $(CFLAGS) -o fetch_filelist $^ $(include_opt) -lcurl
