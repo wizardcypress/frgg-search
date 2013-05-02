@@ -19,7 +19,7 @@ fetch_file(CURL *curl_handle, char *board, char *ofile)
 	FILE *bodyfile;
 	char url[512];
 	
-	char *pattern = "http://bbs.sysu.edu.cn/frgg/%s";
+	char *pattern = "http://bbs.sysu.edu.cn/frgg/filelist?board=%s";
 	
 	snprintf(url, sizeof(url), pattern, board);
 	
