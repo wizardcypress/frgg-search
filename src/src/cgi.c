@@ -84,12 +84,12 @@ int main(int argc, char *argv[])
 		redirect("/");
 	}
 	
-	char *board = strtok(NULL, "&");
-	if (board != NULL && strncmp(board, "b=", 2) == 0) {
-		board = board + 2;	 /* skip "b=" */
-	} else {
-		bad_request();
-	}
+	//char *board = strtok(NULL, "&");
+	//if (board != NULL && strncmp(board, "b=", 2) == 0) {
+	//	board = board + 2;	 /* skip "b=" */
+	//} else {
+	//	bad_request();
+	//}
 
 	char *t = strtok(NULL, "&");
 	int type = 0;
@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
 	if (start != NULL  && strncmp(start, "start=", 6) == 0) {
 		start = start + 6;
 	}
-	search(board, query_terms, type, (start) ? atoi(start) : 0);
-	do_log(LOG_QUERY, "%s %24.24s b=%s t=%s p=%d %s", remote_address, ctime(&now), board, t, start ? atoi(start) : 0, query_terms);
+	search(query_terms, type, (start) ? atoi(start) : 0);
+	do_log(LOG_QUERY, "%s %24.24s t=%s p=%d %s", remote_address, ctime(&now), t, start ? atoi(start) : 0, query_terms);
 	return 0;
 }

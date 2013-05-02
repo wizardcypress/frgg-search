@@ -7,8 +7,9 @@ char *g_termlist[256];	/* query terms after sementation */
 int g_nterm = 0;	/* number of query terms */
 
 
+static double get_timer();
 size_t
-get_number_of_docs(const char *bname, int type)
+get_number_of_docs(int type)
 {
 	char ndocsfile[PATH_MAX];
 	FILE *fp;
@@ -54,6 +55,19 @@ cmpdoc(const void *ptr1, const void *ptr2)
 	return 0;
 }
 
+static double get_doc_weight(DB *wdbp, int docidx)
+{
+    DBT key, value;
+    memset(&key, 0, sizeof(key));
+    memset(&value, 0, sizeof(value)); 
+
+    key.size = sizeof(docidx);
+    key.data = &docidx;
+
+    wdbp->get(wdbp, NULL, &key, &value, 0);
+    assert(value.data);
+    return *(double*)value.data;
+}
 
 /**
  * 1. allocate a accumator A(d) for each document d, set A(d) <- 0
@@ -67,7 +81,7 @@ cmpdoc(const void *ptr1, const void *ptr2)
  * 5. Identify the r greatest S(d) values and return the correspoding documents
  */
 int
-ranking(const char *bname, int type)
+ranking( int type)
 {
 	DB *dbp, *wdbp;
 	DBT key, value;
@@ -111,7 +125,7 @@ ranking(const char *bname, int type)
 	memset(&key, 0, sizeof(key));
 	memset(&value, 0, sizeof(value));
 
-	n_docs = get_number_of_docs(bname, type);
+	n_docs = get_number_of_docs(type);
 	if (n_docs <= 0) {
 		ERROR1("ndocs = %u\n", n_docs);
 		goto CLEAN_DB;
@@ -123,7 +137,7 @@ ranking(const char *bname, int type)
 		ERROR("calloc failed");
 		goto CLEAN_DB;
 	}
-    
+
     memset(&p, 0, sizeof(p));
 	for (i = 0; i < g_nterm; i++) {
 		do_log(LOG_TRACE, "%u fetching postlist for %s", time(NULL), g_termlist[i]);
@@ -153,26 +167,28 @@ ranking(const char *bname, int type)
         SET_NFILE(weightfile, ANN_WEIGHT);
     }
 	
-	double *Weight = malloc(sizeof(double) * (n_docs + 1));
+	//double *Weight = calloc(sizeof(double) , (n_docs + 1));
 
-    if (Weight == NULL) {
-		ERROR("malloc failed");
-		goto CLEAN_GMEM;
-	}
+    //if (Weight == NULL) {
+	//	ERROR("malloc failed");
+	//	goto CLEAN_GMEM;
+	//}
     
-    key.size = sizeof(i);
-    key.data = &i;
-    for(i = 1; i <= n_docs; i++) {
-        memset(&value, 0, sizeof(value)); 
-        ret = wdbp->get(wdbp, NULL, &key, &value, 0);
-        assert(value.data);
-        Weight[i] = *(double*)value.data;
-    }
-	
+    //key.size = sizeof(i);
+    //key.data = &i;
+    //for(i = 1; i <= n_docs; i++) {
+    //    memset(&value, 0, sizeof(value)); 
+    //    ret = wdbp->get(wdbp, NULL, &key, &value, 0);
+    //    assert(value.data);
+    //    Weight[i] = *(double*)value.data;
+    //}
+    	
+
     g_cnt = 0;
 	for (i = n_docs; i >= 1; --i) {
 		if (g_match[i] == g_nterm) {
-			g_score[i] /= Weight[i];
+			g_score[i] /= get_doc_weight(wdbp, i);
+            //g_score[i] /= Weight[i];
 			if (g_cnt == MAX_RETURN_DOCS)
 				break;
 			g_docidlist[g_cnt++] = i;
@@ -181,16 +197,21 @@ ranking(const char *bname, int type)
 	if (g_cnt == 0 && g_nterm > 3) {
 		for (i = n_docs; i >= 1; --i) {
 			if (g_match[i] == g_nterm - 1) {
-				g_score[i] /= Weight[i];
+				g_score[i] /= get_doc_weight(wdbp, i);
+                //g_score[i] /= Weight[i];
 				if (g_cnt == MAX_RETURN_DOCS)
 					break;
 				g_docidlist[g_cnt++] = i;
 			}
 		}
 	}
-
+    
+    fprintf(stderr, "calculate weight %.2lf\n", get_timer());
+    
 	/* sorting */
 	qsort(g_docidlist, g_cnt, sizeof(unsigned int), cmpdoc);
+
+    fprintf(stderr, "qsort %.2lf\n", get_timer());
 	
 	/* DEBUG */
 //	for (i = 0; i < g_cnt; ++i) {
@@ -200,8 +221,6 @@ ranking(const char *bname, int type)
 
 	result = 0;
 	
-	free(Weight);
-CLEAN_GMEM:
 	free(g_match);
 	free(g_score);
 CLEAN_DB:
@@ -219,7 +238,7 @@ char *g_filename[MAX_PAGE_SIZE];
 
 
 int
-gen_result(char *bname, int type, int start)
+gen_result( int type, int start)
 {
 	DB *dbp;
 	DBT key, value;
@@ -328,7 +347,7 @@ urlencode(char *str)
 
 
 void
-html_footer(char *query_str, char *bname, int type, int start)
+html_footer(char *query_str, int type, int start)
 {
 	int i;
 	int curr_page = start / MAX_PAGE_SIZE + 1;
@@ -353,18 +372,18 @@ html_footer(char *query_str, char *bname, int type, int start)
 	puts("<tr>");
 	if (curr_page > 1) { /* last page */
 		puts("<td><div style='width:5em; border:none'>");
-		printf("<nobr><a href='/cgi-bin/search?q=%s&b=%s&t=%s&start=%d'>上一页</a>", urlencode(query_str), bname, (type == BOARD) ? "b" : "a", (curr_page - 2) * MAX_PAGE_SIZE);
+		printf("<nobr><a href='/cgi-bin/search?q=%s&t=%s&start=%d'>上一页</a>", urlencode(query_str), (type == BOARD) ? "b" : "a", (curr_page - 2) * MAX_PAGE_SIZE);
 		puts("</div></td>");
 	}
 	for (i = start_page; i <= end_page; ++i) {
 		if (i == curr_page)
 			printf("<td><div class='navbarcurrentpagenumber'>%d</div></td>", i);
 		else
-			printf("<td><a href='/cgi-bin/search?q=%s&b=%s&t=%s&start=%d'><div class='navbarpagenumber' onmouseover='setHoverColor(this)' onmouseout='unsetHoverColor(this)'>%d</div></a></td>", urlencode(query_str), bname, (type == BOARD) ? "b" : "a", (i - 1) * MAX_PAGE_SIZE, i);
+			printf("<td><a href='/cgi-bin/search?q=%s&t=%s&start=%d'><div class='navbarpagenumber' onmouseover='setHoverColor(this)' onmouseout='unsetHoverColor(this)'>%d</div></a></td>", urlencode(query_str), (type == BOARD) ? "b" : "a", (i - 1) * MAX_PAGE_SIZE, i);
 	}
 	if (curr_page != end_page && end_page != 0) {
 		printf("<td><div style='width:5em; border:none'>");
-		printf("<nobr><a href='/cgi-bin/search?q=%s&b=%s&t=%s&start=%d'>下一页</a></nobr>", urlencode(query_str), bname, (type == BOARD) ? "b" : "a", curr_page * MAX_PAGE_SIZE);
+		printf("<nobr><a href='/cgi-bin/search?q=%s&t=%s&start=%d'>下一页</a></nobr>", urlencode(query_str), (type == BOARD) ? "b" : "a", curr_page * MAX_PAGE_SIZE);
 		printf("</div></td>");
 	}
 	puts("</tr></table><br></center><br>");
@@ -782,7 +801,7 @@ show_right_column()
 
 
 void
-show_result(char *bname, char *query_str, int type, int start, struct timeb *before)
+show_result( char *query_str, int type, int start, struct timeb *before)
 {
 	int i;
 	struct timeb now;
@@ -801,39 +820,39 @@ show_result(char *bname, char *query_str, int type, int start, struct timeb *bef
 	puts("<table width='100%' height='54' align='center' cellpadding='0' cellspacing='0'>");
 	puts("<tr valign=middle>");
 	puts("<td width='100%' valign='top' style='padding-left:8px;width:137px;' nowrap>");
-	puts("<a href='/'><img src='/frgg2.jpg' border='0' width='137' height='46' alt='到frgg首页'></a>");
+	puts("<a href='/'><img src='/frgg/frgg2.jpg' border='0' width='137' height='46' alt='到frgg首页'></a>");
 	puts("</td>");
 	puts("<td>&nbsp;&nbsp;&nbsp;</td>");
 	puts("<td width='100%' valign='top'>");
 		  
 	puts("<table cellspacing='0' cellpadding='0'>");
 	puts("<tr><td valign='top' nowrap>");
-	puts("<form name=sb action='/cgi-bin/search' method='get'>");
+	puts("<form name=sb action='/frgg/search' method='get'>");
 	printf("<input type='text' name=q size='44' class='i' value='%s' maxlength='100'>", query_str);
 	puts("&nbsp;&nbsp;&nbsp;&nbsp;");
 	puts("<select name='b'>");
 
-	char board[BFNAMELEN + 1];
-	FILE *fp = fopen(BOARDS_LIST, "r");
-	if (!fp) {
-		puts("<option>Joke</option>");
-		ERROR1("fopen failed %s", BOARDS_LIST);
-	} else {
-		
-		while (fgets(board, sizeof(board), fp)) {
-			if (board[0] == '\n')
-				break;
-			if (board[strlen(board) - 1] == '\n')
-				board[strlen(board) - 1] = '\0';
-			if (strcmp(bname, board) == 0)
-				printf("<option selected = 'selected' >%s</option>\n", board);
-			else
-				printf("<option>%s</option>\n", board);
-		}
-		fclose(fp);
-	}
-	puts("</select>");
-	puts("&nbsp;&nbsp;&nbsp;");
+	//char board[BFNAMELEN + 1];
+	//FILE *fp = fopen(BOARDS_LIST, "r");
+	//if (!fp) {
+	//	puts("<option>Joke</option>");
+	//	ERROR1("fopen failed %s", BOARDS_LIST);
+	//} else {
+	//	
+	//	while (fgets(board, sizeof(board), fp)) {
+	//		if (board[0] == '\n')
+	//			break;
+	//		if (board[strlen(board) - 1] == '\n')
+	//			board[strlen(board) - 1] = '\0';
+	//		if (strcmp(bname, board) == 0)
+	//			printf("<option selected = 'selected' >%s</option>\n", board);
+	//		else
+	//			printf("<option>%s</option>\n", board);
+	//	}
+	//	fclose(fp);
+	//}
+	//puts("</select>");
+	//puts("&nbsp;&nbsp;&nbsp;");
 	puts("<input type=submit value='frgg一下'>");
 	puts("</td></tr>");
 	puts("<tr><td height='40'><font size=-1>");
@@ -856,9 +875,10 @@ show_result(char *bname, char *query_str, int type, int start, struct timeb *bef
 		show_ann_result();
 	
 	if (g_fname_cnt == 0) {
-		printf("<p style=padding-left:15px;>在<b> %s </b>版面找不到和您的查询 <b> \"%s\"</b> 相符的内容或信息。", bname, query_str);
+		printf("<p style=padding-left:15px;>找不到和您的查询 <b> \"%s\"</b> 相符的内容或信息。", query_str);
 		puts("<p style=margin-top:1em;padding-left:15px;>建议:");
-		printf("<ul><li>选择正确的版面, 你当前选择的版面是<b>%s</b>", bname);
+        puts("<ul>");
+		//printf("<ul><li>选择正确的版面, 你当前选择的版面是<b>%s</b>", bname);
 		if (type == BOARD)
 			puts("<li>尝试搜索<b>精华区文章</b>");
 		puts("<li>使用不同的查询字词");
@@ -866,14 +886,32 @@ show_result(char *bname, char *query_str, int type, int start, struct timeb *bef
 		puts("<li>减少关键词数量</ul></p></p>");
 		puts("<p style=padding-left:15px;>阅读<a href=\"/help.html\">使用帮助</a></p>");
 	}
-	html_footer(query_str, bname, type, start);
+	html_footer(query_str, type, start);
 	for (i = 0; i < MAX_PAGE_SIZE; i++)
 		free(g_filename[i]);
 }
 
+static struct timeval last_tv;
+
+static void start_timer()
+{
+    gettimeofday(&last_tv, NULL);
+}
+
+static double get_timer()
+{
+    struct timeval cur_tv;
+    double time_use;
+
+    gettimeofday(&cur_tv, NULL);
+    time_use = cur_tv.tv_sec + 1.0 * cur_tv.tv_usec/1000/1000;
+    time_use -= (last_tv.tv_sec + 1.0 * last_tv.tv_usec/1000/1000);
+    last_tv = cur_tv;
+    return time_use;
+}
 
 void
-search(char *bname, char *query_str, int type, int start)
+search(char *query_str, int type, int start)
 {
 	char *term;
 	int i;
@@ -896,7 +934,8 @@ search(char *bname, char *query_str, int type, int start)
 		}
 		g_termlist[g_nterm++] = term;
 	}
-	ranking(bname, type);
-	gen_result(bname, type, start);
-	show_result(bname, query_str, type, start, &before);
+    start_timer();
+	ranking(type);
+	gen_result(type, start);
+	show_result(query_str, type, start, &before);
 }

@@ -65,7 +65,7 @@ int dbopen(DB *dbp, const char *db_name, int create);
 
 
 /* search.c */
-void search(char *bname, char *query_str, int type, int start);
+void search( char *query_str, int type, int start);
 
 
 /* fileop.c */
