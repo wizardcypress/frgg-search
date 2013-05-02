@@ -64,7 +64,10 @@ parse_file(char *filename, char *result_file)
 						} else if (strncmp(s, "&amp;", 5) == 0) {
 							putc('&', fout);
 							s += 5;
-						} else {
+						} else if (strncmp(s, "&nbsp;", 6) == 0) { 
+                            putc(' ', fout); 
+                            s += 6;
+                        } else {
 							putc(*s, fout);
 							s++;
 						}
