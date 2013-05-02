@@ -829,8 +829,8 @@ show_result( char *query_str, int type, int start, struct timeb *before)
 	puts("<tr><td valign='top' nowrap>");
 	puts("<form name=sb action='/frgg/search' method='get'>");
 	printf("<input type='text' name=q size='44' class='i' value='%s' maxlength='100'>", query_str);
-	puts("&nbsp;&nbsp;&nbsp;&nbsp;");
-	puts("<select name='b'>");
+	//puts("&nbsp;&nbsp;&nbsp;&nbsp;");
+	//puts("<select name='b'>");
 
 	//char board[BFNAMELEN + 1];
 	//FILE *fp = fopen(BOARDS_LIST, "r");
