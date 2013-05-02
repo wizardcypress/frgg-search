@@ -867,7 +867,7 @@ show_result( char *query_str, int type, int start, struct timeb *before)
 	printf("<td align='right' nowrap>frgg一下，找到相关文章约%d篇，用时%d.%03d秒&nbsp;", g_cnt, sec, milli);
 	puts("&nbsp;&nbsp;&nbsp;</td></tr></table>");
 
-	show_right_column();
+	//show_right_column();
 	
 	if (type == BOARD)
 		show_board_result();
