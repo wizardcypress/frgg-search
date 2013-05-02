@@ -206,12 +206,12 @@ ranking( int type)
 		}
 	}
     
-    fprintf(stderr, "calculate weight %.2lf\n", get_timer());
+    //fprintf(stderr, "calculate weight %.2lf\n", get_timer());
     
 	/* sorting */
 	qsort(g_docidlist, g_cnt, sizeof(unsigned int), cmpdoc);
 
-    fprintf(stderr, "qsort %.2lf\n", get_timer());
+    //fprintf(stderr, "qsort %.2lf\n", get_timer());
 	
 	/* DEBUG */
 //	for (i = 0; i < g_cnt; ++i) {
