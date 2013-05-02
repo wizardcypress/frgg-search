@@ -388,7 +388,7 @@ html_footer(char *query_str, int type, int start)
 	}
 	puts("</tr></table><br></center><br>");
 		
-	puts("<center><p style='font-size:75%'><a href='/'>首页</a> | <a href='/help.html'>帮助</a> | <a href='/about.html'>关于</a> | <a href='http://bbs.sysu.edu.cn'>逸仙时空</a><br><font color='#949494'>&copy; 2009 <a href='mailto:kofreestyler@gmail.com' style='text-decoration: none; color:#949494''>freestyler@argo</a></font></p></center>");
+	puts("<center><p style='font-size:75%'><a href='/frgg/'>首页</a> | <a href='/frgg/help.html'>帮助</a> | <a href='/frgg/about.html'>关于</a> | <a href='http://bbs.sysu.edu.cn'>逸仙时空</a><br><font color='#949494'>&copy; 2009 <a href='mailto:kofreestyler@gmail.com' style='text-decoration: none; color:#949494''>freestyler@argo</a></font></p></center>");
 
 	puts("</body>");
 	puts("</html>");
@@ -543,7 +543,7 @@ void show_board_result()
 		
 		char link[256], cache[256];
 		snprintf(link, sizeof(link), "http://bbs.sysu.edu.cn/bbscon?board=%s&file=%s", bname, filename);
-		snprintf(cache, sizeof(cache), "/cgi-bin/cache?board=%s&file=%s", bname, filename);
+		snprintf(cache, sizeof(cache), "/frgg/cache?board=%s&file=%s", bname, filename);
 
 		printf("<a href='%s' target='_blank'><font size='3'>%s</font></a>&nbsp;&nbsp;&nbsp;-&nbsp;<font color=#696969>%s</font>",  link, emphasize(title, output), author);
 		puts("<br><font size='-1'>");
@@ -884,7 +884,7 @@ show_result( char *query_str, int type, int start, struct timeb *before)
 		puts("<li>使用不同的查询字词");
 		puts("<li>改用常见的查询字词");
 		puts("<li>减少关键词数量</ul></p></p>");
-		puts("<p style=padding-left:15px;>阅读<a href=\"/help.html\">使用帮助</a></p>");
+		puts("<p style=padding-left:15px;>阅读<a href=\"/frgg/help.html\">使用帮助</a></p>");
 	}
 	html_footer(query_str, type, start);
 	for (i = 0; i < MAX_PAGE_SIZE; i++)
