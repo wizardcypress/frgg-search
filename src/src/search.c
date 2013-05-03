@@ -372,18 +372,18 @@ html_footer(char *query_str, int type, int start)
 	puts("<tr>");
 	if (curr_page > 1) { /* last page */
 		puts("<td><div style='width:5em; border:none'>");
-		printf("<nobr><a href='/cgi-bin/search?q=%s&t=%s&start=%d'>上一页</a>", urlencode(query_str), (type == BOARD) ? "b" : "a", (curr_page - 2) * MAX_PAGE_SIZE);
+		printf("<nobr><a href='/frgg/search?q=%s&t=%s&start=%d'>上一页</a>", urlencode(query_str), (type == BOARD) ? "b" : "a", (curr_page - 2) * MAX_PAGE_SIZE);
 		puts("</div></td>");
 	}
 	for (i = start_page; i <= end_page; ++i) {
 		if (i == curr_page)
 			printf("<td><div class='navbarcurrentpagenumber'>%d</div></td>", i);
 		else
-			printf("<td><a href='/cgi-bin/search?q=%s&t=%s&start=%d'><div class='navbarpagenumber' onmouseover='setHoverColor(this)' onmouseout='unsetHoverColor(this)'>%d</div></a></td>", urlencode(query_str), (type == BOARD) ? "b" : "a", (i - 1) * MAX_PAGE_SIZE, i);
+			printf("<td><a href='/frgg/search?q=%s&t=%s&start=%d'><div class='navbarpagenumber' onmouseover='setHoverColor(this)' onmouseout='unsetHoverColor(this)'>%d</div></a></td>", urlencode(query_str), (type == BOARD) ? "b" : "a", (i - 1) * MAX_PAGE_SIZE, i);
 	}
 	if (curr_page != end_page && end_page != 0) {
 		printf("<td><div style='width:5em; border:none'>");
-		printf("<nobr><a href='/cgi-bin/search?q=%s&t=%s&start=%d'>下一页</a></nobr>", urlencode(query_str), (type == BOARD) ? "b" : "a", curr_page * MAX_PAGE_SIZE);
+		printf("<nobr><a href='/frgg/search?q=%s&t=%s&start=%d'>下一页</a></nobr>", urlencode(query_str), (type == BOARD) ? "b" : "a", curr_page * MAX_PAGE_SIZE);
 		printf("</div></td>");
 	}
 	puts("</tr></table><br></center><br>");
